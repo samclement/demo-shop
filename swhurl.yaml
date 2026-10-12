@@ -8,6 +8,8 @@ healthPath: /healthz
 uid: 65532
 telemetry: otlp
 autoDeploy: true
+# The apps this one calls: the platform gives it their address and a token only they accept.
+calls: [demo-orders]
 # What this app offers other apps: its API description (served, and kept in the repository) and its events.
 # The platform reads both files for every image; the events file says what the app publishes.
 provides:

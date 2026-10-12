@@ -2,8 +2,7 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { trace } from "@opentelemetry/api";
 import pino from "pino";
-import { declaredPublishes, publish } from "./events.js";
-import { type Caller, Unauthorized, identify, notify, service } from "./platform.js";
+import { type Caller, Unauthorized, identify, service } from "./platform.js";
 
 export const logger = pino({
   level: process.env.LOG_LEVEL ?? "info",
@@ -53,67 +52,78 @@ app.use(async (c, next) => {
   }, "request handled");
 });
 
-// An example of calling another app: GET /call/orders asks the app "orders" for its "/" and
-// returns what it said. It works once this app declares the call (calls: [orders] in swhurl.yaml).
-app.get("/call/:name", async (c) => {
-  const name = c.req.param("name");
-  try {
-    const reply = await service(name).fetch("/");
-    return c.json({ called: name, status: reply.status, reply: await reply.json().catch(() => null) }, reply.ok ? 200 : 502);
-  } catch (error) {
-    return c.json({ called: name, error: (error as Error).message }, 502);
-  }
-});
+// demo-orders, the app this one calls. service() gives its address in this environment and sends
+// this app's token for it, which the platform issues and replaces every few minutes; demo-orders
+// accepts it because this app declared the call (calls: [demo-orders]) and refuses everyone else.
+const orders = () => service("demo-orders");
+const ITEMS = ["tea", "coffee", "biscuits", "milk", "sugar"];
 
-// An example of notifying the team: POST /notify sends a message to the notification channel of
-// the team that owns this app, and says whether the platform accepted it.
-app.post("/notify", async (c) => {
-  const caller = c.get("caller");
-  const sent = await notify("Hello from the example route", { message: `Asked for by ${caller.id ?? "an anonymous caller"}.` });
-  return c.json({ sent });
-});
-
-// The example route: says hello, names the caller and publishes an event.
-async function hello(caller: Caller) {
-  // An example of publishing: the first event this app declares (events.publish in swhurl.yaml)
-  // goes out on every request. Off the platform, or with nothing declared, nothing happens.
-  const [published] = declaredPublishes();
-  let eventId: string | null = null;
-  if (published) {
-    try {
-      eventId = (await publish(published, { path: "/", caller }))?.id ?? null;
-    } catch (error) {
-      logger.error({ err: error, event: published, trace_id: traceId() }, "event not published");
-    }
-  }
-  return {
-    message: `hello from ${serviceName}`,
-    service: serviceName,
-    caller,
-    event: eventId ? { type: `${serviceName}.${published}`, id: eventId } : null,
-    traceId: traceId(),
-  };
-}
-
-// A described route: the schemas below are what the handler must return and what openapi.json says.
-// Add routes the same way and run `npm run openapi`; CI fails if openapi.json is out of date.
-const Hello = z.object({
+// Described routes: the schemas are what each handler takes and returns, and what openapi.json says.
+// After changing one, run `npm run build && npm run openapi`; a test fails while the file is out of date.
+const CallerSchema = z.object({ type: z.enum(["app", "user", "anonymous"]), id: z.string().nullable() }).openapi("Caller");
+const Order = z.object({
+  id: z.string(),
+  item: z.string().openapi({ example: "tea" }),
+  quantity: z.number().int().openapi({ example: 2 }),
+  placedBy: z.string().openapi({ example: "demo-shop" }),
+  at: z.string(),
+}).openapi("Order");
+const Shop = z.object({
   message: z.string().openapi({ example: "hello from demo-shop" }),
   service: z.string(),
-  caller: z.object({ type: z.enum(["app", "user", "anonymous"]), id: z.string().nullable() }),
-  visits: z.number().int().optional().openapi({ description: "How many times it was asked, when the app keeps a database" }),
-  event: z.object({ type: z.string(), id: z.string() }).nullable().openapi({ description: "The event this request published, if any" }),
+  caller: CallerSchema,
+  items: z.array(z.string()).openapi({ description: "What can be bought" }),
+  latestOrders: z.array(Order).nullable().openapi({ description: "The newest five orders, from demo-orders; null if it could not be asked" }),
   traceId: z.string().nullable(),
-}).openapi("Hello");
+}).openapi("Shop");
+const Purchase = z.object({
+  item: z.string().min(1).max(40).default("tea").openapi({ example: "tea" }),
+  quantity: z.coerce.number().int().min(1).max(1000).default(1).openapi({ example: 2 }),
+}).openapi("Purchase");
+const Bought = z.object({ order: Order, boughtBy: CallerSchema, traceId: z.string().nullable() }).openapi("Bought");
+const Problem = z.object({ error: z.string() }).openapi("Problem");
+const json = <T extends z.ZodType>(schema: T, description: string) => ({ description, content: { "application/json": { schema } } });
+
+app.openapi(
+  createRoute({ method: "get", path: "/", summary: "The shop: what it sells and the latest orders", responses: { 200: json(Shop, "The shop") } }),
+  async (c) => {
+    let latestOrders: z.infer<typeof Order>[] | null = null;
+    try {
+      const reply = await orders().fetch("/orders?limit=5");
+      if (reply.ok) latestOrders = ((await reply.json()) as { orders: z.infer<typeof Order>[] }).orders;
+    } catch (error) {
+      // Not declared yet, or demo-orders is away: the shop still answers.
+      logger.warn({ err: error, trace_id: traceId() }, "demo-orders could not be asked");
+    }
+    return c.json({
+      message: `hello from ${serviceName}`, service: serviceName, caller: c.get("caller"), items: ITEMS, latestOrders, traceId: traceId(),
+    }, 200);
+  },
+);
 
 app.openapi(
   createRoute({
-    method: "get",
-    path: "/",
-    summary: "Say hello and name the caller",
-    responses: { 200: { description: "A greeting", content: { "application/json": { schema: Hello } } } },
+    method: "post",
+    path: "/buy",
+    summary: "Buy something: the shop places the order with demo-orders",
+    description: "Anyone who reaches the shop may buy: a signed-in person, or an app that declared a call to demo-shop. "
+      + "The order is placed in demo-orders by this app, with its own token. Send `item` and `quantity` as JSON or as query parameters.",
+    request: { query: Purchase.partial(), body: { required: false, content: { "application/json": { schema: Purchase.partial() } } } },
+    responses: { 201: json(Bought, "The order demo-orders stored"), 502: json(Problem, "demo-orders refused or could not be reached") },
   }),
-  async (c) => c.json(await hello(c.get("caller")), 200),
+  async (c) => {
+    const body = c.req.header("content-type")?.includes("application/json") ? c.req.valid("json") : {};
+    const { item, quantity } = Purchase.parse({ ...c.req.valid("query"), ...body });
+    try {
+      const reply = await orders().fetch("/orders", {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ item, quantity }),
+      });
+      if (!reply.ok) return c.json({ error: `demo-orders answered ${reply.status}` }, 502);
+      return c.json({ order: (await reply.json()) as z.infer<typeof Order>, boughtBy: c.get("caller"), traceId: traceId() }, 201);
+    } catch (error) {
+      return c.json({ error: (error as Error).message }, 502);
+    }
+  },
 );
 
 /** What this app offers other apps: generated from the routes above, served and kept in openapi.json. */
