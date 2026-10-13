@@ -53,7 +53,7 @@ Locally there are no platform keys or tokens: requests without a token work as b
 npm install
 npm run dev                             # the SDK stays off locally (the image turns it on)
 curl http://localhost:8080/healthz
-npm run check                           # type-check, as CI does
+npm run check                           # type-check without writing JavaScript
 npm run build && npm test               # the tests run against the built app
 ```
 
