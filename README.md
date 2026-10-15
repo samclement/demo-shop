@@ -2,7 +2,7 @@
 
 > **A demo app of the swhurl platform.** With [demo-orders](https://github.com/samclement/demo-orders), [demo-shopper](https://github.com/samclement/demo-shopper) and [demo-notifier](https://github.com/samclement/demo-notifier) it shows how apps on the platform work together. This one shows:
 >
-> - **Calling another app securely.** `swhurl.yaml` says `calls: [demo-orders]`; `service("demo-orders")` in `src/app.ts` then has its address and sends a short-lived token only demo-orders accepts. Nothing about the cluster is in this repository.
+> - **Calling another app securely.** The platform grants it a call to demo-orders (`make app-calls`; nothing about it is in `swhurl.yaml`); `service("demo-orders")` in `src/app.ts` then has its address and sends a short-lived token only demo-orders accepts. Nothing about the cluster is in this repository.
 > - **Who is calling.** A signed-in person (the shop is behind the platform's sign-in) or another app (demo-shopper): `GET /` and `POST /buy` answer both and say which.
 > - **A described API.** `openapi.json` is generated from the routes; the platform's Catalogue lists them.
 >
