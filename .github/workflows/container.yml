@@ -16,7 +16,11 @@ permissions:
 
 jobs:
   app:
+<<<<<<< before updating
     uses: samclement/swhurl-app-template-typescript/.github/workflows/app.yml@v0.2.11
+=======
+    uses: samclement/swhurl-app-template-typescript/.github/workflows/app.yml@v0.2.12
+>>>>>>> after updating
     with:
       checks-in-image: true
       reuse-pr-image: true

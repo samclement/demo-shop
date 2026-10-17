@@ -2,13 +2,25 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { trace } from "@opentelemetry/api";
 import pino from "pino";
+<<<<<<< before updating
 import { type Caller, Unauthorized, identify, service } from "./platform.js";
+=======
+import { declaredPublishes, publish } from "./events.js";
+import { flagsLoaded } from "./flags.js";
+import { type Caller, Unauthorized, identify, notify, service } from "./platform.js";
+>>>>>>> after updating
 
 export const logger = pino({
   level: process.env.LOG_LEVEL ?? "info",
 });
 
 const serviceName = process.env.OTEL_SERVICE_NAME ?? "swhurl-app";
+// Who this app is, as the platform names and describes it (SWHURL_APP; SWHURL_DESCRIPTION, from
+// swhurl.yaml), or as it was created off the platform: an image built for another app says the right thing.
+const identity = () => ({
+  name: process.env.SWHURL_APP || "demo-shop",
+  description: process.env.SWHURL_DESCRIPTION || "Demo: the shop people open; it places orders by calling demo-orders with a platform token",
+});
 
 export const app = new OpenAPIHono<{ Variables: { caller: Caller } }>();
 const traceId = (): string | null => trace.getActiveSpan()?.spanContext().traceId ?? null;
@@ -18,8 +30,10 @@ app.onError((error, c) => {
   return c.json({ error: "internal error" }, 500);
 });
 
-// What the platform probes: no caller check, no log line.
+// What the platform probes: no caller check, no log line. Not ready until the app's feature flag
+// overrides have arrived (at most 5 s; src/flagstore.ts).
 app.get("/healthz", (c) => {
+  if (!flagsLoaded()) return c.json({ ok: false, waiting: "feature flag overrides" }, 503);
   return c.json({ ok: true });
 });
 
@@ -40,6 +54,8 @@ app.use(async (c, next) => {
   const span = trace.getActiveSpan();
   span?.setAttribute("caller.type", caller.type);
   if (caller.id) span?.setAttribute("caller.id", caller.id);
+  const person = caller.type === "app" ? caller.user : undefined;
+  if (person) span?.setAttribute("user.email", person);
   await next();
   logger.info({
     method: c.req.method,
@@ -48,15 +64,31 @@ app.use(async (c, next) => {
     duration_ms: Date.now() - start,
     "caller.type": caller.type,
     "caller.id": caller.id,
+    ...(person ? { "user.email": person } : {}),
     trace_id: traceId(),
   }, "request handled");
 });
 
+<<<<<<< before updating
 // demo-orders, the app this one calls. service() gives its address in this environment and sends
 // this app's token for it, which the platform issues and replaces every few minutes; demo-orders
 // accepts it because this app declared the call (calls: [demo-orders]) and refuses everyone else.
 const orders = () => service("demo-orders");
 const ITEMS = ["tea", "coffee", "biscuits", "milk", "sugar"];
+=======
+// An example of calling another app: GET /call/orders asks the app "orders" for its "/" and
+// returns what it said. It works once the platform grants this app the call (make app-calls).
+// onBehalfOf tells orders who is signed in here, so its "/" names this app and that person.
+app.get("/call/:name", async (c) => {
+  const name = c.req.param("name");
+  try {
+    const reply = await service(name).fetch("/", { onBehalfOf: c.get("caller") });
+    return c.json({ called: name, status: reply.status, reply: await reply.json().catch(() => null) }, reply.ok ? 200 : 502);
+  } catch (error) {
+    return c.json({ called: name, error: (error as Error).message }, 502);
+  }
+});
+>>>>>>> after updating
 
 // Described routes: the schemas are what each handler takes and returns, and what openapi.json says.
 // After changing one, run `npm run build && npm run openapi`; a test fails while the file is out of date.
@@ -95,11 +127,39 @@ app.openapi(
       // Not declared yet, or demo-orders is away: the shop still answers.
       logger.warn({ err: error, trace_id: traceId() }, "demo-orders could not be asked");
     }
+<<<<<<< before updating
     return c.json({
       message: `hello from ${serviceName}`, service: serviceName, caller: c.get("caller"), items: ITEMS, latestOrders, traceId: traceId(),
     }, 200);
   },
 );
+=======
+  }
+  const message = `hello from ${serviceName}`;
+  return {
+    message,
+    service: serviceName,
+    caller,
+    event: eventId ? { type: `${serviceName}.${published}`, id: eventId } : null,
+    traceId: traceId(),
+  };
+}
+
+// A described route: the schemas below are what the handler must return and what openapi.json says.
+// Add routes the same way and run `npm run openapi`; CI fails if openapi.json is out of date.
+const Hello = z.object({
+  message: z.string().openapi({ example: `hello from ${identity().name}` }),
+  service: z.string(),
+  caller: z.object({
+    type: z.enum(["app", "user", "anonymous"]),
+    id: z.string().nullable(),
+    user: z.string().optional().openapi({ description: "For an app: the signed-in person it is calling for" }),
+  }),
+  visits: z.number().int().optional().openapi({ description: "How many times it was asked, when the app keeps a database" }),
+  event: z.object({ type: z.string(), id: z.string() }).nullable().openapi({ description: "The event this request published, if any" }),
+  traceId: z.string().nullable(),
+}).openapi("Hello");
+>>>>>>> after updating
 
 app.openapi(
   createRoute({
@@ -129,7 +189,7 @@ app.openapi(
 /** What this app offers other apps: generated from the routes above, served and kept in openapi.json. */
 export const openapi = () => app.getOpenAPI31Document({
   openapi: "3.1.0",
-  info: { title: "demo-shop", version: "0.1.0", description: "Demo: the shop people open; it places orders by calling demo-orders with a platform token" },
+  info: { title: identity().name, version: "0.1.0", description: identity().description },
 });
 app.get("/openapi.json", (c) => c.json(openapi()));
 
