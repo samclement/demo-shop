@@ -8,3 +8,5 @@ description: 'Demo: the shop people open; it places orders by calling demo-order
     with a platform token'
 events: none
 kind: web
+
+#copier updated
