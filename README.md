@@ -7,7 +7,7 @@
 > - **Who is calling.** A signed-in person (the shop is behind the platform's sign-in) or another app (demo-shopper): `GET /api/shop` and `POST /api/buy` answer both and say which.
 > - **Its own SQLite.** The orders live in demo-orders; the shop keeps only what it alone uses, the purchases made through it (`migrations/002_purchases.sql`), shown as "your recent purchases".
 >
-> Try it: open the shop's address, signed in, and buy twelve of something. An order of ten or more makes demo-notifier tell the team. `POST /buy` still answers as `POST /api/buy` for one release.
+> Try it: open the shop's address, signed in, and buy twelve of something. An order of ten or more makes demo-notifier tell the team.
 
 Demo: the shop people open; a page that places orders in demo-orders and keeps its own purchase log
 

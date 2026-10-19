@@ -57,13 +57,6 @@ test("buying places the order in demo-orders with the shop's own token, and logs
   assert.deepEqual(someoneElse.yourPurchases, [], "each person sees their own");
 });
 
-test("POST /buy still answers as /api/buy for one release", async () => {
-  const bought = await app.request("/buy?item=sugar&quantity=2", { method: "POST", headers: person });
-  assert.equal(bought.status, 201);
-  assert.deepEqual(JSON.parse(seen.at(-1).body), { item: "sugar", quantity: 2 });
-  assert.equal((await app.request("/buy?quantity=0", { method: "POST" })).status, 400);
-});
-
 test("without demo-orders the shop still answers, and says a purchase failed", async (t) => {
   t.after(() => stub.close());
   process.env.SWHURL_SERVICE_DEMO_ORDERS_URL = "http://127.0.0.1:1";
