@@ -207,16 +207,6 @@ app.openapi(
   }),
   async (c) => buy(c, await purchaseOf(c)),
 );
-// The route's address before the page (POST /buy), kept for one release while demo-shopper moves to /api/buy.
-app.post("/buy", async (c) => {
-  try {
-    return await buy(c, await purchaseOf(c));
-  } catch (error) {
-    if (error instanceof z.ZodError) return c.json({ error: error.message }, 400);
-    throw error;
-  }
-});
-
 /** The shop's API description: generated from the routes above and kept in openapi.json to type the page's calls. */
 export const openapi = () => app.getOpenAPI31Document({
   openapi: "3.1.0",
