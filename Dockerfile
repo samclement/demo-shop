@@ -4,8 +4,19 @@ COPY package.json package-lock.json ./
 ARG NPM_CONFIG_LOGLEVEL=warn
 RUN npm ci
 
+# The browser frontend (web/): formatted, linted and type-checked, then built by Vite+ into /app/public.
+# Its own dependencies (Vite+) stay in this stage: the runtime image gets only the built files.
+FROM node:24-bookworm-slim AS web
+WORKDIR /app/web
+COPY web/package.json web/package-lock.json ./
+ARG NPM_CONFIG_LOGLEVEL=warn
+RUN npm ci
+COPY web ./
+RUN npm run check && npm run build
+
 FROM deps AS build
-COPY tsconfig.json ./
+COPY tsconfig.json swhurl.yaml ./
+COPY scripts ./scripts
 COPY src ./src
 RUN npm run build
 
@@ -28,7 +39,8 @@ ENV NODE_ENV=production
 # Logs go to stdout, which the platform collects, so the SDK does not export them too. Resource detectors:
 # only local ones; the default list also asks Google Cloud, AWS and Azure metadata servers and logs a
 # MetadataLookupWarning at every start.
-ENV NODE_OPTIONS="--import /app/dist/instrumentation.js" \
+# node:sqlite is still marked experimental in Node 24; its one start-up warning is silenced.
+ENV NODE_OPTIONS="--import /app/dist/instrumentation.js --disable-warning=ExperimentalWarning" \
     OTEL_NODE_RESOURCE_DETECTORS=env,host,os,process,serviceinstance,container \
     OTEL_TRACES_EXPORTER=otlp \
     OTEL_METRICS_EXPORTER=otlp \
@@ -39,5 +51,8 @@ COPY --from=prod-deps --chown=65532:65532 /app/node_modules ./node_modules
 COPY --from=prod-deps --chown=65532:65532 /app/package.json ./package.json
 # Depending on the check stage makes a failing test stop the runtime image build.
 COPY --from=check --chown=65532:65532 /app/dist ./dist
+COPY --from=web --chown=65532:65532 /app/public ./public
+COPY --chown=65532:65532 migrations ./migrations
+COPY --chown=65532:65532 asyncapi.yaml ./asyncapi.yaml
 EXPOSE 8080
 CMD ["dist/main.js"]
