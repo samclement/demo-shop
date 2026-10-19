@@ -3,17 +3,91 @@
   "info": {
     "title": "demo-shop",
     "version": "0.1.0",
-    "description": "Demo: the shop people open; it places orders by calling demo-orders with a platform token"
+    "description": "Demo: the shop people open; a page that places orders in demo-orders and keeps its own purchase log"
   },
   "components": {
     "schemas": {
-      "Shop": {
+      "Hello": {
         "type": "object",
         "properties": {
           "message": {
             "type": "string",
             "example": "hello from demo-shop"
           },
+          "service": {
+            "type": "string"
+          },
+          "caller": {
+            "$ref": "#/components/schemas/Caller"
+          },
+          "visits": {
+            "type": "integer",
+            "description": "How many times it was asked"
+          },
+          "event": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "type": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "id"
+            ],
+            "description": "The event this request published, if any"
+          },
+          "traceId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "message",
+          "service",
+          "caller",
+          "event",
+          "traceId"
+        ]
+      },
+      "Caller": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "app",
+              "user",
+              "anonymous"
+            ]
+          },
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "user": {
+            "type": "string",
+            "description": "For an app: the signed-in person it is calling for"
+          }
+        },
+        "required": [
+          "type",
+          "id"
+        ]
+      },
+      "Shop": {
+        "type": "object",
+        "properties": {
           "service": {
             "type": "string"
           },
@@ -37,6 +111,13 @@
             },
             "description": "The newest five orders, from demo-orders; null if it could not be asked"
           },
+          "yourPurchases": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MyPurchase"
+            },
+            "description": "Your newest five purchases through this shop, from its own database"
+          },
           "traceId": {
             "type": [
               "string",
@@ -45,35 +126,12 @@
           }
         },
         "required": [
-          "message",
           "service",
           "caller",
           "items",
           "latestOrders",
+          "yourPurchases",
           "traceId"
-        ]
-      },
-      "Caller": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "enum": [
-              "app",
-              "user",
-              "anonymous"
-            ]
-          },
-          "id": {
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        },
-        "required": [
-          "type",
-          "id"
         ]
       },
       "Order": {
@@ -103,6 +161,34 @@
           "item",
           "quantity",
           "placedBy",
+          "at"
+        ]
+      },
+      "MyPurchase": {
+        "type": "object",
+        "properties": {
+          "orderId": {
+            "type": "string"
+          },
+          "item": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "integer"
+          },
+          "via": {
+            "type": "string",
+            "description": "Who placed it: the page (user), or the app that called the shop"
+          },
+          "at": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "orderId",
+          "item",
+          "quantity",
+          "via",
           "at"
         ]
       },
@@ -143,9 +229,26 @@
     "parameters": {}
   },
   "paths": {
-    "/": {
+    "/api/hello": {
       "get": {
-        "summary": "The shop: what it sells and the latest orders",
+        "summary": "Say hello and name the caller",
+        "responses": {
+          "200": {
+            "description": "A greeting",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Hello"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/shop": {
+      "get": {
+        "summary": "The shop: what it sells, the latest orders and your purchases",
         "responses": {
           "200": {
             "description": "The shop",
@@ -160,10 +263,10 @@
         }
       }
     },
-    "/buy": {
+    "/api/buy": {
       "post": {
         "summary": "Buy something: the shop places the order with demo-orders",
-        "description": "Anyone who reaches the shop may buy: a signed-in person, or an app that declared a call to demo-shop. The order is placed in demo-orders by this app, with its own token. Send `item` and `quantity` as JSON or as query parameters.",
+        "description": "Anyone who reaches the shop may buy: a signed-in person (the page), or an app granted a call to demo-shop. The order is placed in demo-orders by this app, with its own token, for the signed-in person. Send `item` and `quantity` as JSON or as query parameters.",
         "parameters": [
           {
             "schema": {
