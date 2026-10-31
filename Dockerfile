@@ -1,4 +1,4 @@
-FROM node:24-bookworm-slim AS deps
+FROM node:26-bookworm-slim AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 ARG NPM_CONFIG_LOGLEVEL=warn
@@ -6,7 +6,7 @@ RUN npm ci
 
 # The browser frontend (web/): formatted, linted and type-checked, then built by Vite+ into /app/public.
 # Its own dependencies (Vite+) stay in this stage: the runtime image gets only the built files.
-FROM node:24-bookworm-slim AS web
+FROM node:26-bookworm-slim AS web
 WORKDIR /app/web
 COPY web/package.json web/package-lock.json ./
 ARG NPM_CONFIG_LOGLEVEL=warn
@@ -26,7 +26,7 @@ FROM build AS check
 COPY . .
 RUN npm test --if-present
 
-FROM node:24-bookworm-slim AS prod-deps
+FROM node:26-bookworm-slim AS prod-deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 ARG NPM_CONFIG_LOGLEVEL=warn
